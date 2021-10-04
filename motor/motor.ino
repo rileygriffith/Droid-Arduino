@@ -74,6 +74,12 @@ boolean extraClicks = false;
 long blinkMillis = millis();
 boolean blinkOn = false;
 
+// ---------------------------------------------------------------------------------------
+//    Byte variables to reference each motor
+// ---------------------------------------------------------------------------------------
+byte rightMotor = 1;
+byte leftMotor = 2;
+
 // =======================================================================================
 //                                 Main Program
 // =======================================================================================
@@ -127,14 +133,14 @@ void loop()
    // Ignore extra inputs from the PS3 Controller
    if (extraClicks)
    {
-      if ((previousMillis + 500) < millis())
+      if ((previousMillis + 10000) < millis())
       {
           extraClicks = false;
       }
    }
   
    // Control the Main Loop Blinker
-   if ((blinkMillis + 1000) < millis()) {
+   if ((blinkMillis + 10000) < millis()) {
       if (blinkOn) {
         digitalWrite(13, LOW);
         blinkOn = false;
@@ -320,7 +326,7 @@ void checkController()
             int currentValueY = PS3Controller->getAnalogHat(LeftHatY) - 128;
             int currentValueX = PS3Controller->getAnalogHat(LeftHatX) - 128;
 
-            // processMotor(currentValueX, currentValueY);
+            processMotor(currentValueX, currentValueY);
             
             char yString[5];
             itoa(currentValueY, yString, 10);
@@ -331,22 +337,20 @@ void checkController()
             #ifdef SHADOW_DEBUG
                 strcat(output, "LEFT Joystick Y Value: ");
                 strcat(output, yString);
-                strcat(output, "\r\n");
+                strcat(output, "\n");
                 strcat(output, "LEFT Joystick X Value: ");
                 strcat(output, xString);
                 strcat(output, "\r\n");
             #endif
             
      }
-     else {
-      isMoving = false;
-     }
-     
 
      if (PS3Controller->PS3Connected && ((abs(PS3Controller->getAnalogHat(RightHatY)-128) > joystickDeadZoneRange) || (abs(PS3Controller->getAnalogHat(RightHatX)-128) > joystickDeadZoneRange)))
      {
-            int currentValueY = PS3Controller->getAnalogHat(RightHatY) - 128;
             int currentValueX = PS3Controller->getAnalogHat(RightHatX) - 128;
+            int currentValueY = PS3Controller->getAnalogHat(RightHatY) - 128;
+
+            turnDroid(currentValueX, currentValueY);
 
             char yString[5];
             itoa(currentValueY, yString, 10);
@@ -357,12 +361,65 @@ void checkController()
             #ifdef SHADOW_DEBUG
                 strcat(output, "RIGHT Joystick Y Value: ");
                 strcat(output, yString);
-                strcat(output, "\r\n");
+                strcat(output, "\n");
                 strcat(output, "RIGHT Joystick X Value: ");
                 strcat(output, xString);
                 strcat(output, "\r\n");
             #endif       
      }
+}
+
+void turnDroid(int x, int y){
+    // X, Y values range from -128 to 128
+    // If x is positive, we want to turn right at some speed
+    // Motor 1 is the right motor, motor 2 is the left
+
+    // If y is negative, we want to turn left
+    // To achieve this, we can turn the right motor forward and left motor backwards
+    if(x < joystickDeadZoneRange * -1){
+        ST->motor(rightMotor, abs(x/4));
+        ST->motor(leftMotor, x/4);
+        isMoving = true;
+        isFootMotorStopped = false;
+
+        // Debug output
+        char left[5];
+        itoa(abs(x/4), left, 10);
+        char right[5];
+        itoa(x/4, right, 10);
+        #ifdef SHADOW_DEBUG
+            strcat(output, "Right motor power at: ");
+            strcat(output, right);
+            strcat(output, "\nLeft motor power at: ");
+            strcat(output, left);
+            strcat(output, "\r\n");
+        #endif
+    }
+    // To turn right, left motor forward right motor backward
+    else if(x > joystickDeadZoneRange){
+        ST->motor(rightMotor, x/4 * -1);
+        ST->motor(leftMotor, x/4);
+        isMoving = true;
+        isFootMotorStopped = false;
+
+        // Debug output
+        char left[5];
+        itoa(x/4, left, 10);
+        char right[5];
+        itoa(x/4*-1, right, 10);
+        #ifdef SHADOW_DEBUG
+            strcat(output, "Right motor power at: ");
+            strcat(output, right);
+            strcat(output, "\nLeft motor power at: ");
+            strcat(output, left);
+            strcat(output, "\r\n");
+        #endif
+    }
+    else{
+        isMoving = false;
+        isFootMotorStopped = true;
+    }
+   
 }
 
 // =======================================================================================
