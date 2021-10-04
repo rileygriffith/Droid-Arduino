@@ -88,7 +88,6 @@ byte leftMotor = 2;
 // =======================================================================================
 void setup()
 {
-  
     //Debug Serial for use with USB Debugging
     Serial.begin(9600);
     ST->autobaud();
@@ -111,7 +110,6 @@ void setup()
 
     pinMode(13, OUTPUT);
     digitalWrite(13, LOW);
-
 }
 
 // =======================================================================================
@@ -119,39 +117,37 @@ void setup()
 // =======================================================================================
 void loop()
 {   
-   // Make sure the Bluetooth Dongle is working - skip main loop if not
-   if ( !readUSB() )
-   {
-     //We have a fault condition that we want to ensure that we do NOT process any controller data
-     printOutput(output);
-     return;
-   }
+    // Make sure the Bluetooth Dongle is working - skip main loop if not
+    if ( !readUSB() )
+    {
+        //We have a fault condition that we want to ensure that we do NOT process any controller data
+        printOutput(output);
+        return;
+    }
     
-   // Check and output PS3 Controller inputs
-   checkController();
-  
-   // Ignore extra inputs from the PS3 Controller
-   if (extraClicks)
-   {
-      if ((previousMillis + 10000) < millis())
-      {
-          extraClicks = false;
-      }
-   }
-  
-   // Control the Main Loop Blinker
-   if ((blinkMillis + 10000) < millis()) {
-      if (blinkOn) {
-        digitalWrite(13, LOW);
-        blinkOn = false;
-      } else {
-        digitalWrite(13, HIGH);
-        blinkOn = true;
-      }
-      blinkMillis = millis();
-   }
-
-   printOutput(output);
+    // Check and output PS3 Controller inputs
+    checkController();
+    
+    // Ignore extra inputs from the PS3 Controller
+    if (extraClicks){
+        if ((previousMillis + 200) < millis())
+        {
+            extraClicks = false;
+        }
+    }
+    
+    // Control the Main Loop Blinker
+    if ((blinkMillis + 100) < millis()) {
+        if (blinkOn) {
+            digitalWrite(13, LOW);
+            blinkOn = false;
+        } else {
+            digitalWrite(13, HIGH);
+            blinkOn = true;
+        }
+        blinkMillis = millis();
+    }
+    printOutput(output);
 }
 
 // =======================================================================================
@@ -326,7 +322,7 @@ void checkController()
             int currentValueY = PS3Controller->getAnalogHat(LeftHatY) - 128;
             int currentValueX = PS3Controller->getAnalogHat(LeftHatX) - 128;
 
-            processMotor(currentValueX, currentValueY);
+            moveDroid(currentValueX, currentValueY);
             
             char yString[5];
             itoa(currentValueY, yString, 10);
@@ -367,6 +363,34 @@ void checkController()
                 strcat(output, "\r\n");
             #endif       
      }
+}
+
+void moveDroid(int x, int y){
+    // X, Y values range from -128 to 128
+    // If y is positive, we want to move forward at some speed
+    // If y is negative, we want to move backward at some speed
+    if(y > joystickDeadZoneRange or y < joystickDeadZoneRange * -1){
+        ST->drive(y/4 * -1);
+        isMoving = true;
+        isFootMotorStopped = false;
+  
+        // Debug output
+        char moveSpeed[5];
+        itoa(y/4 * -1, moveSpeed, 10);
+        #ifdef SHADOW_DEBUG
+            if(y > 15){
+                strcat(output, "Driving forward at power: ");
+            }else if (y < -15){
+                strcat(output, "Driving backward at power: ");
+            }
+            strcat(output, moveSpeed);
+            strcat(output, "\r\n");
+        #endif
+    }
+    else{
+        isMoving = false;
+        isFootMotorStopped = true;
+    }
 }
 
 void turnDroid(int x, int y){
