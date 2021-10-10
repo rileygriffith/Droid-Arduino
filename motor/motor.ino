@@ -80,6 +80,13 @@ boolean blinkOn = false;
 byte rightMotor = 1;
 byte leftMotor = 2;
 
+// ---------------------------------------------------------------------------------------
+//    Throw out 2/3rd of the inputs
+// ---------------------------------------------------------------------------------------
+int counter = 0;
+int prevX = 0;
+int prevY = 0;
+
 // =======================================================================================
 //                                 Main Program
 // =======================================================================================
@@ -130,14 +137,14 @@ void loop()
     
     // Ignore extra inputs from the PS3 Controller
     if (extraClicks){
-        if ((previousMillis + 200) < millis())
+        if ((previousMillis + 500) < millis())
         {
             extraClicks = false;
         }
     }
     
     // Control the Main Loop Blinker
-    if ((blinkMillis + 100) < millis()) {
+    if ((blinkMillis + 1000) < millis()) {
         if (blinkOn) {
             digitalWrite(13, LOW);
             blinkOn = false;
@@ -321,8 +328,6 @@ void checkController()
             
             int currentValueY = PS3Controller->getAnalogHat(LeftHatY) - 128;
             int currentValueX = PS3Controller->getAnalogHat(LeftHatX) - 128;
-
-            moveDroid(currentValueX, currentValueY);
             
             char yString[5];
             itoa(currentValueY, yString, 10);
@@ -338,6 +343,9 @@ void checkController()
                 strcat(output, xString);
                 strcat(output, "\r\n");
             #endif
+
+            previousMillis = millis();
+            extraClicks = true;
             
      }
 
@@ -346,104 +354,124 @@ void checkController()
             int currentValueX = PS3Controller->getAnalogHat(RightHatX) - 128;
             int currentValueY = PS3Controller->getAnalogHat(RightHatY) - 128;
 
-            turnDroid(currentValueX, currentValueY);
+//            if(prevX != currentValueX or prevY != currentValueY){
+//                prevX = currentValueX;
+//                prevY = currentValueY;
+//                moveDroid(currentValueX, currentValueY);
+//            }
+
+            if(counter % 6 == 0){
+                moveDroid(currentValueX, currentValueY);
+            }
+            counter += 1;
+
 
             char yString[5];
             itoa(currentValueY, yString, 10);
 
             char xString[5];
             itoa(currentValueX, xString, 10);
+            
+//            #ifdef SHADOW_DEBUG
+//                strcat(output, "RIGHT Joystick Y Value: ");
+//                strcat(output, yString);
+//                strcat(output, "\n");
+//                strcat(output, "RIGHT Joystick X Value: ");
+//                strcat(output, xString);
+//                strcat(output, "\r\n");
+//            #endif
 
-            #ifdef SHADOW_DEBUG
-                strcat(output, "RIGHT Joystick Y Value: ");
-                strcat(output, yString);
-                strcat(output, "\n");
-                strcat(output, "RIGHT Joystick X Value: ");
-                strcat(output, xString);
-                strcat(output, "\r\n");
-            #endif       
+            previousMillis = millis();
+            extraClicks = true;
      }
 }
 
 void moveDroid(int x, int y){
     // X, Y values range from -128 to 128
-    // If y is positive, we want to move forward at some speed
-    // If y is negative, we want to move backward at some speed
-    if(y > joystickDeadZoneRange or y < joystickDeadZoneRange * -1){
-        ST->drive(y/4 * -1);
-        isMoving = true;
-        isFootMotorStopped = false;
-  
-        // Debug output
-        char moveSpeed[5];
-        itoa(y/4 * -1, moveSpeed, 10);
-        #ifdef SHADOW_DEBUG
-            if(y > 15){
-                strcat(output, "Driving forward at power: ");
-            }else if (y < -15){
-                strcat(output, "Driving backward at power: ");
-            }
-            strcat(output, moveSpeed);
-            strcat(output, "\r\n");
-        #endif
-    }
-    else{
+    // Down is y = 128, up is y = -128
+    // Right is x = 128, left is y = -128
+
+    // Process turns and drive separately, forward and backward movement take precedence
+    if(y > joystickDeadZoneRange or y < joystickDeadZoneRange * -1){ // Then we want to move forwards or backwards
+        if(y < joystickDeadZoneRange * -1){ // move forward
+            ST->motor(leftMotor, abs(y/2));
+            ST->motor(rightMotor, abs(y/2));
+            isMoving = true;
+            isFootMotorStopped = false;
+      
+            // Debug output
+            char moveSpeed[5];
+            itoa(y/2 * -1, moveSpeed, 10);
+            #ifdef SHADOW_DEBUG
+                if(y > 15){
+                    strcat(output, "Driving backward at power: ");
+                }else if (y < -15){
+                    strcat(output, "Driving forward at power: ");
+                }
+                strcat(output, moveSpeed);
+                strcat(output, "\r\n");
+            #endif
+        }else if(y > joystickDeadZoneRange){ // drive backwards
+            ST->motor(leftMotor, y/2 * -1);
+            ST->motor(rightMotor, y/2 * -1);
+            isMoving = true;
+            isFootMotorStopped = false;
+      
+            // Debug output
+            char moveSpeed[5];
+            itoa(y/2 * -1, moveSpeed, 10);
+            #ifdef SHADOW_DEBUG
+                if(y < -15){
+                    strcat(output, "Driving forward at power: ");
+                }else if (y > 15){
+                    strcat(output, "Driving backward at power: ");
+                }
+                strcat(output, moveSpeed);
+                strcat(output, "\r\n");
+            #endif
+        }
+    }else if(x > joystickDeadZoneRange or x < joystickDeadZoneRange * -1){ // Then we want to turn left or right
+        if(x > joystickDeadZoneRange){ // Turn right
+            ST->motor(rightMotor, x/3 * -1);
+            ST->motor(leftMotor, x/3);
+            isMoving = true;
+            isFootMotorStopped = false;
+    
+            // Debug output
+            char left[5];
+            itoa(x/3, left, 10);
+            char right[5];
+            itoa(x/3 * -1, right, 10);
+            #ifdef SHADOW_DEBUG
+                strcat(output, "Right motor power at: ");
+                strcat(output, right);
+                strcat(output, "\nLeft motor power at: ");
+                strcat(output, left);
+                strcat(output, "\r\n");
+            #endif
+        }else if(x < joystickDeadZoneRange * -1){ // Turn left
+            ST->motor(rightMotor, abs(x/3));
+            ST->motor(leftMotor, x/3);
+            isMoving = true;
+            isFootMotorStopped = false;
+    
+            // Debug output
+            char left[5];
+            itoa(x/3, left, 10);
+            char right[5];
+            itoa(abs(x/3), right, 10);
+            #ifdef SHADOW_DEBUG
+                strcat(output, "Right motor power at: ");
+                strcat(output, right);
+                strcat(output, "\nLeft motor power at: ");
+                strcat(output, left);
+                strcat(output, "\r\n");
+            #endif
+        }
+    }else{
         isMoving = false;
         isFootMotorStopped = true;
     }
-}
-
-void turnDroid(int x, int y){
-    // X, Y values range from -128 to 128
-    // If x is positive, we want to turn right at some speed
-    // Motor 1 is the right motor, motor 2 is the left
-
-    // If y is negative, we want to turn left
-    // To achieve this, we can turn the right motor forward and left motor backwards
-    if(x < joystickDeadZoneRange * -1){
-        ST->motor(rightMotor, abs(x/4));
-        ST->motor(leftMotor, x/4);
-        isMoving = true;
-        isFootMotorStopped = false;
-
-        // Debug output
-        char left[5];
-        itoa(abs(x/4), left, 10);
-        char right[5];
-        itoa(x/4, right, 10);
-        #ifdef SHADOW_DEBUG
-            strcat(output, "Right motor power at: ");
-            strcat(output, right);
-            strcat(output, "\nLeft motor power at: ");
-            strcat(output, left);
-            strcat(output, "\r\n");
-        #endif
-    }
-    // To turn right, left motor forward right motor backward
-    else if(x > joystickDeadZoneRange){
-        ST->motor(rightMotor, x/4 * -1);
-        ST->motor(leftMotor, x/4);
-        isMoving = true;
-        isFootMotorStopped = false;
-
-        // Debug output
-        char left[5];
-        itoa(x/4, left, 10);
-        char right[5];
-        itoa(x/4*-1, right, 10);
-        #ifdef SHADOW_DEBUG
-            strcat(output, "Right motor power at: ");
-            strcat(output, right);
-            strcat(output, "\nLeft motor power at: ");
-            strcat(output, left);
-            strcat(output, "\r\n");
-        #endif
-    }
-    else{
-        isMoving = false;
-        isFootMotorStopped = true;
-    }
-   
 }
 
 // =======================================================================================
