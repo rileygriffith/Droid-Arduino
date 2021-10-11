@@ -81,11 +81,35 @@ byte rightMotor = 1;
 byte leftMotor = 2;
 
 // ---------------------------------------------------------------------------------------
-//    Throw out 2/3rd of the inputs
+//    Throw out 5 out every 6 inputs
 // ---------------------------------------------------------------------------------------
 int counter = 0;
-int prevX = 0;
-int prevY = 0;
+
+// ---------------------------------------------------------------------------------------
+//    Sonar stuff
+// ---------------------------------------------------------------------------------------
+#define TRIGGER_PIN_FRONT 12
+#define ECHO_PIN_FRONT 11
+#define TRIGGER_PIN_LEFT 10
+#define ECHO_PIN_LEFT 9
+#define MAX_DISTANCE 400
+#define SONAR_NUM 2
+#define PING_INTERVAL 100
+
+NewPing sonar1(TRIGGER_PIN_FRONT, ECHO_PIN_FRONT, MAX_DISTANCE);
+NewPing sonar2(TRIGGER_PIN_LEFT, ECHO_PIN_LEFT, MAX_DISTANCE);
+
+unsigned int pingSpeed = 200;
+unsigned long pingTimer1;
+unsigned long pingTimer2;
+
+boolean autonomousMode = false;
+boolean turning = false;
+double turnThreshold;
+
+#define NUM_PREV_VALUES 7
+double previousValuesFront[NUM_PREV_VALUES] = {MAX_DISTANCE};
+double previousValuesLeft[NUM_PREV_VALUES] = {MAX_DISTANCE};
 
 // =======================================================================================
 //                                 Main Program
@@ -117,6 +141,10 @@ void setup()
 
     pinMode(13, OUTPUT);
     digitalWrite(13, LOW);
+
+    // Sonar setup
+    pingTimer1 = millis();
+    pingTimer2 = millis() + PING_INTERVAL;
 }
 
 // =======================================================================================
@@ -154,8 +182,108 @@ void loop()
         }
         blinkMillis = millis();
     }
+    
+    // Sonar loop
+    if (millis() >= pingTimer2) {
+      pingTimer2 += pingSpeed;
+      sonar2.ping_timer(echoCheck2);
+    }
+    if (millis() >= pingTimer1) {
+      pingTimer1 += pingSpeed;
+      sonar1.ping_timer(echoCheck1);
+    }
+    
     printOutput(output);
 }
+
+void processFrontSensor(bool moveForward){
+    if(moveForward){
+        // Simulate controller movement
+        turning = false;
+        Serial.print("Moving droid forward");
+        moveDroid(0, -90);
+    }else{ // Begin right turn if forward movement has stopped
+        turning = true;
+        Serial.print("Turning droid");
+
+        ST->motor(rightMotor, 0);
+        ST->motor(leftMotor, 50);
+    }
+}
+
+void echoCheck1(){
+    double ping_distance_front;
+    if(sonar1.check_timer()){
+//        Serial.print("Ping1: ");
+        ping_distance_front = (sonar1.ping_result/US_ROUNDTRIP_CM) * 0.39370079;
+//        Serial.print(ping_distance_front);
+//        Serial.println("in");
+        if(autonomousMode){
+            // Push back all previous values
+            double frontAverage = 0;
+            for(int i = NUM_PREV_VALUES-1; i >= 1; i--){
+                previousValuesFront[i] = previousValuesFront[i-1];
+                Serial.print(previousValuesFront[i]);
+                Serial.print(" ");
+                frontAverage += previousValuesFront[i];
+            }
+            // Add new value
+            previousValuesFront[0] = ping_distance_front;
+            frontAverage += ping_distance_front;
+            frontAverage = frontAverage/NUM_PREV_VALUES;
+            Serial.print("Average: ");
+            Serial.print(frontAverage);
+            Serial.println("in");
+            // Set the threshold based on the droid state
+            if(turning){
+                turnThreshold = 36;
+            }else{
+                turnThreshold = 15;
+            }
+            // Process new average
+            if(frontAverage < turnThreshold){
+                processFrontSensor(false);
+            }else{
+                processFrontSensor(true);
+            }
+        }
+    }
+}
+
+void echoCheck2(){
+    double ping_distance_left;
+    if(sonar2.check_timer()){
+//        Serial.print("Ping2: ");
+        ping_distance_left = (sonar2.ping_result/US_ROUNDTRIP_CM) * 0.39370079;
+//        Serial.print(ping_distance_left);
+//        Serial.println("in");
+//        if(autonomousMode){
+//            // Push back all previous values
+//            double leftAverage = 0;
+//            for(int i = NUM_PREV_VALUES-1; i >= 1; i--){
+//                previousValuesLeft[i] = previousValuesLeft[i-1];
+//                Serial.print(previousValuesLeft[i]);
+//                Serial.print(" ");
+//                leftAverage += previousValuesLeft[i];
+//            }
+//            // Add new value
+//            previousValuesLeft[0] = ping_distance_left;
+//            leftAverage += ping_distance_left;
+//            leftAverage = leftAverage/NUM_PREV_VALUES;
+//            Serial.print("Average: ");
+//            Serial.print(leftAverage);
+//            Serial.println("in");
+//            // If leftAverage is greater than 4 inches we want to get closer to the wall
+//            if(leftAverage < 4){
+//                processFrontSensor(false);
+//            }else{
+//                processFrontSensor(true);
+//            }
+//        }
+    }
+}
+
+
 
 // =======================================================================================
 //          Check Controller Function to show all PS3 Controller inputs are Working
@@ -222,8 +350,10 @@ void checkController()
      if (PS3Controller->PS3Connected && PS3Controller->getButtonPress(CROSS) && !extraClicks)
      {
             #ifdef SHADOW_DEBUG
-                strcat(output, "Button: CROSS Selected.\r\n");
-            #endif       
+                strcat(output, "Button: CROSS Selected. Autonomous mode starting\r\n");
+            #endif
+
+            autonomousMode = true;
             
             previousMillis = millis();
             extraClicks = true;
@@ -245,8 +375,10 @@ void checkController()
      if (PS3Controller->PS3Connected && PS3Controller->getButtonPress(SQUARE) && !extraClicks)
      {
             #ifdef SHADOW_DEBUG
-                strcat(output, "Button: SQUARE Selected.\r\n");
-            #endif       
+                strcat(output, "Button: SQUARE Selected. Autonomous mode ending\r\n");
+            #endif
+
+            autonomousMode = false;
             
             previousMillis = millis();
             extraClicks = true;
@@ -354,13 +486,7 @@ void checkController()
             int currentValueX = PS3Controller->getAnalogHat(RightHatX) - 128;
             int currentValueY = PS3Controller->getAnalogHat(RightHatY) - 128;
 
-//            if(prevX != currentValueX or prevY != currentValueY){
-//                prevX = currentValueX;
-//                prevY = currentValueY;
-//                moveDroid(currentValueX, currentValueY);
-//            }
-
-            if(counter % 6 == 0){
+            if(counter % 6 == 0 && !autonomousMode){
                 moveDroid(currentValueX, currentValueY);
             }
             counter += 1;
@@ -469,6 +595,8 @@ void moveDroid(int x, int y){
             #endif
         }
     }else{
+        ST->motor(rightMotor, 0);
+        ST->motor(leftMotor, 0);
         isMoving = false;
         isFootMotorStopped = true;
     }
@@ -615,43 +743,6 @@ boolean criticalFaultDetect()
     return false;
 }
 
-void processMotor(int x, int y)
-{
-   int turnnum = x - 127;
-   int footDriveSpeed = y - 127;
-  
-   if(isMoving) {
-    if(oldTurnNum < turnnum) {
-      ST->turn(1);
-    }
-    else {
-      ST->turn(-1);
-    }
-    if(oldFootDriveSpeed < footDriveSpeed) {
-      ST->drive(1);
-    }
-    else {
-      ST->drive(-1);
-    }
-   }
-   else {
-    isMoving = true;
-    if(oldTurnNum < turnnum) {
-      ST->turn(1);
-    }
-    else {
-      ST->turn(-1);
-    }
-    if(oldFootDriveSpeed < footDriveSpeed) {
-      ST->drive(1);
-    }
-    else {
-      ST->drive(-1);
-    }
-   }
-   oldTurnNum = turnnum;
-   oldFootDriveSpeed = footDriveSpeed;
-}
 // =======================================================================================
 //           USB Read Function - Supports Main Program Loop
 // =======================================================================================
