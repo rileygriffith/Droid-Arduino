@@ -114,7 +114,7 @@ NewPing sonar2(TRIGGER_PIN_LEFT, ECHO_PIN_LEFT, MAX_DISTANCE);
 unsigned int pingSpeed = 200;
 unsigned long pingTimer1;
 unsigned long pingTimer2;
-
+unsigned long scaleTimer;
 unsigned long soundTimer;
 int soundDuration;
 int songNum;
@@ -167,6 +167,7 @@ void setup()
     // Sonar setup
     pingTimer1 = millis();
     pingTimer2 = millis() + PING_INTERVAL;
+    scaleTimer = millis() + 2000;
 
     // Sound setup
     MP3Trigger.setup(&Serial2);
@@ -264,6 +265,10 @@ void randomSound() {
 }
 
 void handleVolumeScale() {
+  if (millis() > scaleTimer) {
+    MP3Trigger.trigger(songNum);
+    scaleTimer = millis() + 2000;
+  }
   MP3Trigger.setVolume(volume);
 }
 
@@ -433,13 +438,6 @@ void checkController()
             #ifdef SHADOW_DEBUG
                 strcat(output, "Button: CIRCLE Selected.\r\n");
             #endif      
-
-            if (randomSoundState) {
-              randomSoundState = false;
-            }
-            else {
-              randomSoundState = true;
-            }
             
             previousMillis = millis();
             extraClicks = true;
@@ -464,12 +462,6 @@ void checkController()
             #ifdef SHADOW_DEBUG
                 strcat(output, "Button: TRIANGLE Selected.\r\n");
             #endif       
-            if (scaleVolumeMode) {
-              scaleVolumeMode = false;
-            }
-            else {
-              scaleVolumeMode = true;
-            }
             previousMillis = millis();
             extraClicks = true;
               
@@ -494,7 +486,7 @@ void checkController()
             #ifdef SHADOW_DEBUG
                 strcat(output, "Button: LEFT 1 Selected.\r\n");
             #endif       
-            
+            randomSoundState = true;
             previousMillis = millis();
             extraClicks = true;
      }
@@ -504,7 +496,7 @@ void checkController()
             #ifdef SHADOW_DEBUG
                 strcat(output, "Button: LEFT 2 Selected.\r\n");
             #endif       
-            
+            randomSoundState = false;
             previousMillis = millis();
             extraClicks = true;
      }
@@ -514,7 +506,7 @@ void checkController()
             #ifdef SHADOW_DEBUG
                 strcat(output, "Button: RIGHT 1 Selected.\r\n");
             #endif       
-            
+            scaleVolumeMode = true;
             previousMillis = millis();
             extraClicks = true;
      }
@@ -524,7 +516,7 @@ void checkController()
             #ifdef SHADOW_DEBUG
                 strcat(output, "Button: RIGHT 2 Selected.\r\n");
             #endif       
-            
+            scaleVolumeMode = false;
             previousMillis = millis();
             extraClicks = true;
      }
