@@ -487,6 +487,8 @@ void checkController()
                 strcat(output, "Button: LEFT 1 Selected.\r\n");
             #endif       
             randomSoundState = true;
+            scaleVolumeMode = false;
+
             previousMillis = millis();
             extraClicks = true;
      }
@@ -507,6 +509,8 @@ void checkController()
                 strcat(output, "Button: RIGHT 1 Selected.\r\n");
             #endif       
             scaleVolumeMode = true;
+            randomSoundState = false;
+
             previousMillis = millis();
             extraClicks = true;
      }
@@ -553,9 +557,6 @@ void checkController()
 
      if (PS3Controller->PS3Connected && ((abs(PS3Controller->getAnalogHat(LeftHatY)-128) > joystickDeadZoneRange) || (abs(PS3Controller->getAnalogHat(LeftHatX)-128) > joystickDeadZoneRange)))
      { 
-            if(scaleVolumeMode) {
-              handleScaleVolumeInput();
-            }
             
             int currentValueY = PS3Controller->getAnalogHat(LeftHatY) - 128;
             int currentValueX = PS3Controller->getAnalogHat(LeftHatX) - 128;
@@ -593,7 +594,10 @@ void checkController()
             }
             counter += 1;
 
-
+            if(scaleVolumeMode) {
+              handleScaleVolumeInput();
+            }
+            
             char yString[5];
             itoa(currentValueY, yString, 10);
 
