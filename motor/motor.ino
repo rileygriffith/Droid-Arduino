@@ -18,6 +18,7 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 #include <NewPing.h>
+#include <MP3Trigger.h>
 
 // ---------------------------------------------------------------------------------------
 //                       Debug - Verbose Flags
@@ -30,6 +31,9 @@
 USB Usb;
 BTD Btd(&Usb);
 PS3BT *PS3Controller=new PS3BT(&Btd);
+
+// Declare MP3 Trigger
+MP3Trigger MP3Trigger;
 
 int oldTurnNum = 0;
 int oldFootDriveSpeed = 0;
@@ -61,6 +65,7 @@ boolean mainControllerConnected = false;
 boolean WaitingforReconnect = false;
 boolean isFootMotorStopped = true;
 boolean isMoving = false;
+boolean scaleVolume = false;
 
 // ---------------------------------------------------------------------------------------
 //    Used for PS3 Controller Click Management
@@ -86,6 +91,13 @@ byte leftMotor = 2;
 int counter = 0;
 
 // ---------------------------------------------------------------------------------------
+//    Screen stuff
+// ---------------------------------------------------------------------------------------
+#define SCREEN_WIDTH 128 // OLED display width, in pixels
+#define SCREEN_HEIGHT 64 // OLED display height, in pixels
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
+
+// ---------------------------------------------------------------------------------------
 //    Sonar stuff
 // ---------------------------------------------------------------------------------------
 #define TRIGGER_PIN_FRONT 12
@@ -103,6 +115,11 @@ unsigned int pingSpeed = 200;
 unsigned long pingTimer1;
 unsigned long pingTimer2;
 
+unsigned long soundTimer;
+int soundDuration;
+int songNum;
+int volume;
+
 boolean autonomousMode = false;
 boolean turning = false;
 double turnThreshold;
@@ -111,6 +128,11 @@ double turnThreshold;
 double previousValuesFront[NUM_PREV_VALUES] = {MAX_DISTANCE};
 double previousValuesLeft[NUM_PREV_VALUES] = {MAX_DISTANCE};
 
+boolean randomSoundState;
+boolean scaleVolumeMode;
+
+boolean isMovingForward;
+unsigned long movingForwardTimer;
 // =======================================================================================
 //                                 Main Program
 // =======================================================================================
@@ -145,6 +167,25 @@ void setup()
     // Sonar setup
     pingTimer1 = millis();
     pingTimer2 = millis() + PING_INTERVAL;
+
+    // Sound setup
+    MP3Trigger.setup(&Serial2);
+    Serial2.begin(MP3Trigger::serialRate());
+    soundTimer = millis();
+    soundDuration = -1;
+    songNum = 1;
+    volume = 10;
+    isMovingForward = false;
+    randomSoundState = false;
+    scaleVolumeMode = false;
+    movingForwardTimer = millis();
+    
+    // Display setup
+    display.begin(SSD1306_SWITCHCAPVCC, 0X3C);
+    display.display();
+    delay(2000);
+    display.clearDisplay();
+
 }
 
 // =======================================================================================
@@ -186,14 +227,65 @@ void loop()
     // Sonar loop
     if (millis() >= pingTimer2) {
       pingTimer2 += pingSpeed;
-      sonar2.ping_timer(echoCheck2);
+      sonar2.ping_timer(echoCheck2, 10);
     }
     if (millis() >= pingTimer1) {
       pingTimer1 += pingSpeed;
-      sonar1.ping_timer(echoCheck1);
+      sonar1.ping_timer(echoCheck1, 10);
     }
-    
+ 
+    if (randomSoundState) {
+      randomSound();
+      handleSongDisplay();
+    }
+
+    if (scaleVolumeMode) {
+      handleVolumeScale();
+    }
+    MP3Trigger.update();
+    // Sound loop
     printOutput(output);
+}
+
+void randomSound() {
+  if(soundDuration < 0) {
+    soundDuration = random(1,6);
+    soundTimer = millis() + (soundDuration * 1000);
+    MP3Trigger.trigger(songNum);
+  }
+  else{
+    if(millis() > soundTimer) {
+      songNum = (songNum % 5) + 1;
+      soundDuration = random(1,6);
+      soundTimer = millis() + (soundDuration * 1000);
+      MP3Trigger.trigger(songNum);
+    }
+  }
+}
+
+void handleVolumeScale() {
+  MP3Trigger.setVolume(volume);
+}
+
+void handleSongDisplay() {
+   display.clearDisplay();
+   display.setTextSize(2);
+   display.setTextColor(WHITE);
+   display.setCursor(0,0);
+   display.println("Song");
+   display.println(songNum);
+   display.display();
+}
+
+void setDisplay() {
+  display.setTextSize(2);
+  display.setTextColor(WHITE);
+  display.setCursor(0,0);
+  display.println("DIR: NE");
+  display.println(" ");
+  display.println("D: 20.2 Ft");
+  display.println(" ");
+  display.display(); 
 }
 
 void processFrontSensor(bool moveForward){
@@ -341,6 +433,13 @@ void checkController()
             #ifdef SHADOW_DEBUG
                 strcat(output, "Button: CIRCLE Selected.\r\n");
             #endif      
+
+            if (randomSoundState) {
+              randomSoundState = false;
+            }
+            else {
+              randomSoundState = true;
+            }
             
             previousMillis = millis();
             extraClicks = true;
@@ -365,7 +464,12 @@ void checkController()
             #ifdef SHADOW_DEBUG
                 strcat(output, "Button: TRIANGLE Selected.\r\n");
             #endif       
-            
+            if (scaleVolumeMode) {
+              scaleVolumeMode = false;
+            }
+            else {
+              scaleVolumeMode = true;
+            }
             previousMillis = millis();
             extraClicks = true;
               
@@ -456,7 +560,10 @@ void checkController()
      }
 
      if (PS3Controller->PS3Connected && ((abs(PS3Controller->getAnalogHat(LeftHatY)-128) > joystickDeadZoneRange) || (abs(PS3Controller->getAnalogHat(LeftHatX)-128) > joystickDeadZoneRange)))
-     {
+     { 
+            if(scaleVolumeMode) {
+              handleScaleVolumeInput();
+            }
             
             int currentValueY = PS3Controller->getAnalogHat(LeftHatY) - 128;
             int currentValueX = PS3Controller->getAnalogHat(LeftHatX) - 128;
@@ -479,6 +586,9 @@ void checkController()
             previousMillis = millis();
             extraClicks = true;
             
+     }
+     else {
+      isMovingForward = false;
      }
 
      if (PS3Controller->PS3Connected && ((abs(PS3Controller->getAnalogHat(RightHatY)-128) > joystickDeadZoneRange) || (abs(PS3Controller->getAnalogHat(RightHatX)-128) > joystickDeadZoneRange)))
@@ -510,6 +620,25 @@ void checkController()
             previousMillis = millis();
             extraClicks = true;
      }
+}
+
+void handleScaleVolumeInput() {
+    if (isMovingForward) {
+      int timePlaying = millis() - movingForwardTimer;
+      if(timePlaying > 3000) {
+        volume = 1;
+      }
+      else if(timePlaying > 2000) {
+        volume = 5;
+      }
+      else {
+        volume = 10;
+      }
+    }
+    else {
+      isMovingForward = true;
+      movingForwardTimer = millis();
+    }         
 }
 
 void moveDroid(int x, int y){
