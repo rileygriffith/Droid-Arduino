@@ -487,10 +487,9 @@ void checkController()
             int currentValueY = PS3Controller->getAnalogHat(RightHatY) - 128;
 
             if(counter % 6 == 0 && !autonomousMode){
-                moveDroid(currentValueX, currentValueY);
+              moveDroid(currentValueX, currentValueY);
             }
             counter += 1;
-
 
             char yString[5];
             itoa(currentValueY, yString, 10);
@@ -517,89 +516,38 @@ void moveDroid(int x, int y){
     // Down is y = 128, up is y = -128
     // Right is x = 128, left is y = -128
 
-    // Process turns and drive separately, forward and backward movement take precedence
-    if(y > joystickDeadZoneRange or y < joystickDeadZoneRange * -1){ // Then we want to move forwards or backwards
-        if(y < joystickDeadZoneRange * -1){ // move forward
-            ST->motor(leftMotor, abs(y/2));
-            ST->motor(rightMotor, abs(y/2));
-            isMoving = true;
-            isFootMotorStopped = false;
-      
-            // Debug output
-            char moveSpeed[5];
-            itoa(y/2 * -1, moveSpeed, 10);
-            #ifdef SHADOW_DEBUG
-                if(y > 15){
-                    strcat(output, "Driving backward at power: ");
-                }else if (y < -15){
-                    strcat(output, "Driving forward at power: ");
-                }
-                strcat(output, moveSpeed);
-                strcat(output, "\r\n");
-            #endif
-        }else if(y > joystickDeadZoneRange){ // drive backwards
-            ST->motor(leftMotor, y/2 * -1);
-            ST->motor(rightMotor, y/2 * -1);
-            isMoving = true;
-            isFootMotorStopped = false;
-      
-            // Debug output
-            char moveSpeed[5];
-            itoa(y/2 * -1, moveSpeed, 10);
-            #ifdef SHADOW_DEBUG
-                if(y < -15){
-                    strcat(output, "Driving forward at power: ");
-                }else if (y > 15){
-                    strcat(output, "Driving backward at power: ");
-                }
-                strcat(output, moveSpeed);
-                strcat(output, "\r\n");
-            #endif
-        }
-    }else if(x > joystickDeadZoneRange or x < joystickDeadZoneRange * -1){ // Then we want to turn left or right
-        if(x > joystickDeadZoneRange){ // Turn right
-            ST->motor(rightMotor, x/3 * -1);
-            ST->motor(leftMotor, x/3);
-            isMoving = true;
-            isFootMotorStopped = false;
+    if(y > joystickDeadZoneRange or y < joystickDeadZoneRange * -1){
+        y = (y/2) * -1;
+        char drivePower[6];
+        itoa(y, drivePower, 10);
     
-            // Debug output
-            char left[5];
-            itoa(x/3, left, 10);
-            char right[5];
-            itoa(x/3 * -1, right, 10);
-            #ifdef SHADOW_DEBUG
-                strcat(output, "Right motor power at: ");
-                strcat(output, right);
-                strcat(output, "\nLeft motor power at: ");
-                strcat(output, left);
-                strcat(output, "\r\n");
-            #endif
-        }else if(x < joystickDeadZoneRange * -1){ // Turn left
-            ST->motor(rightMotor, abs(x/3));
-            ST->motor(leftMotor, x/3);
-            isMoving = true;
-            isFootMotorStopped = false;
-    
-            // Debug output
-            char left[5];
-            itoa(x/3, left, 10);
-            char right[5];
-            itoa(abs(x/3), right, 10);
-            #ifdef SHADOW_DEBUG
-                strcat(output, "Right motor power at: ");
-                strcat(output, right);
-                strcat(output, "\nLeft motor power at: ");
-                strcat(output, left);
-                strcat(output, "\r\n");
-            #endif
+        #ifdef SHADOW_DEBUG
+            strcat(output, "setting drive power to: ");
+            strcat(output, drivePower);
+            strcat(output, "\r\n");
+        #endif
+        ST->drive(y);
+        if(x < joystickDeadZoneRange and x > joystickDeadZoneRange * -1){
+            ST->turn(0);
         }
-    }else{
-        ST->motor(rightMotor, 0);
-        ST->motor(leftMotor, 0);
-        isMoving = false;
-        isFootMotorStopped = true;
     }
+
+    if(x > joystickDeadZoneRange or x < joystickDeadZoneRange * -1){
+        char turnPower[6];
+        itoa(x/3, turnPower, 10);
+    
+        #ifdef SHADOW_DEBUG
+            strcat(output, "setting turn power to: ");
+            strcat(output, turnPower);
+            strcat(output, "\r\n");
+        #endif
+
+        ST->turn(x/3);
+        if(y < joystickDeadZoneRange and y > joystickDeadZoneRange * -1){
+            ST->drive(50);
+        }
+    }
+
 }
 
 // =======================================================================================
