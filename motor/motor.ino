@@ -18,6 +18,16 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 #include <NewPing.h>
+#include <MP3Trigger.h>
+#include <Adafruit_TLC5947.h>
+
+
+// ---------------------------------------------------------------------------------------
+//                       Sound Data Ports
+// ---------------------------------------------------------------------------------------
+#define clock 5
+#define data 6
+#define latch 4
 
 // ---------------------------------------------------------------------------------------
 //                       Debug - Verbose Flags
@@ -31,11 +41,17 @@ USB Usb;
 BTD Btd(&Usb);
 PS3BT *PS3Controller=new PS3BT(&Btd);
 
+// Declare MP3 Trigger
+MP3Trigger MP3Trigger;
+
 int oldTurnNum = 0;
 int oldFootDriveSpeed = 0;
 byte driveDeadBandRange = 10;
 #define SABERTOOTH_ADDR 128
 Sabertooth *ST=new Sabertooth(SABERTOOTH_ADDR, Serial);
+
+Adafruit_TLC5947 LEDControl = Adafruit_TLC5947(1, clock, data, latch);
+int ledMaxBright = 4000;
 
 // ---------------------------------------------------------------------------------------
 //    Output String for Serial Monitor Output
@@ -61,6 +77,7 @@ boolean mainControllerConnected = false;
 boolean WaitingforReconnect = false;
 boolean isFootMotorStopped = true;
 boolean isMoving = false;
+boolean scaleVolume = false;
 
 // ---------------------------------------------------------------------------------------
 //    Used for PS3 Controller Click Management
@@ -86,6 +103,13 @@ byte leftMotor = 2;
 int counter = 0;
 
 // ---------------------------------------------------------------------------------------
+//    Screen stuff
+// ---------------------------------------------------------------------------------------
+#define SCREEN_WIDTH 128 // OLED display width, in pixels
+#define SCREEN_HEIGHT 64 // OLED display height, in pixels
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
+
+// ---------------------------------------------------------------------------------------
 //    Sonar stuff
 // ---------------------------------------------------------------------------------------
 #define TRIGGER_PIN_FRONT 12
@@ -102,6 +126,11 @@ NewPing sonar2(TRIGGER_PIN_LEFT, ECHO_PIN_LEFT, MAX_DISTANCE);
 unsigned int pingSpeed = 200;
 unsigned long pingTimer1;
 unsigned long pingTimer2;
+unsigned long scaleTimer;
+unsigned long soundTimer;
+int soundDuration;
+int songNum;
+int volume;
 
 boolean autonomousMode = false;
 boolean turning = false;
@@ -111,6 +140,25 @@ double turnThreshold;
 double previousValuesFront[NUM_PREV_VALUES] = {MAX_DISTANCE};
 double previousValuesLeft[NUM_PREV_VALUES] = {MAX_DISTANCE};
 
+boolean randomSoundState;
+boolean scaleVolumeMode;
+
+boolean isMovingForward;
+unsigned long movingForwardTimer;
+
+
+// ROUTINE ONE VARIABLES
+int BEEP_SONG_NUM = 1;
+int EXPLODE_SONG_NUM = 2;
+int NUM_LIGHTS = 1;
+int driveDirection = 1;
+unsigned long rt1Timer;
+unsigned long explosionTimer;
+unsigned long SONG_LENGTH[2] = {390, 840};
+unsigned long songTimer;
+int rt1PingInterval = 4000;
+boolean routineOne = false;
+boolean playingBeep = false;
 // =======================================================================================
 //                                 Main Program
 // =======================================================================================
@@ -142,9 +190,22 @@ void setup()
     pinMode(13, OUTPUT);
     digitalWrite(13, LOW);
 
-    // Sonar setup
-    pingTimer1 = millis();
-    pingTimer2 = millis() + PING_INTERVAL;
+    // Sound setup
+    MP3Trigger.setup(&Serial2);
+    Serial2.begin(MP3Trigger::serialRate());
+
+
+    LEDControl.begin(); 
+    LEDControl.setPWM(0, 0);
+    LEDControl.setPWM(1, 0);
+    LEDControl.write();
+    
+    // Display setup
+    display.begin(SSD1306_SWITCHCAPVCC, 0X3C);
+    display.display();
+    delay(2000);
+    display.clearDisplay();
+    soundTimer = millis() + 2000;
 }
 
 // =======================================================================================
@@ -170,7 +231,6 @@ void loop()
             extraClicks = false;
         }
     }
-    
     // Control the Main Loop Blinker
     if ((blinkMillis + 1000) < millis()) {
         if (blinkOn) {
@@ -183,108 +243,66 @@ void loop()
         blinkMillis = millis();
     }
     
-    // Sonar loop
-    if (millis() >= pingTimer2) {
-      pingTimer2 += pingSpeed;
-      sonar2.ping_timer(echoCheck2);
+    // Sound loop
+    if (routineOne) {
+      rt1();
     }
-    if (millis() >= pingTimer1) {
-      pingTimer1 += pingSpeed;
-      sonar1.ping_timer(echoCheck1);
-    }
-    
-    printOutput(output);
+    //MP3Trigger.update();
+    //LEDControl.write();
 }
 
-void processFrontSensor(bool moveForward){
-    if(moveForward){
-        // Simulate controller movement
-        turning = false;
-        Serial.print("Moving droid forward");
-        moveDroid(0, -90);
-    }else{ // Begin right turn if forward movement has stopped
-        turning = true;
-        Serial.print("Turning droid");
-
-        ST->motor(rightMotor, 0);
-        ST->motor(leftMotor, 50);
-    }
+void rt1() {
+  if(rt1PingInterval < 500) {
+    strcat(output, "Explode!\r\n");
+    playExplosion();
+    LEDControl.setPWM(0, ledMaxBright);
+    LEDControl.setPWM(1, ledMaxBright);
+    routineOne = false;
+    LEDControl.write();
+    return;
+  }
+  if (millis() > rt1Timer) {
+    strcat(output, "change direction!\r\n");
+    driveDirection = driveDirection * -1;
+    playBeep();
+    rt1PingInterval -= 500;
+    rt1Timer = millis() + rt1PingInterval;
+  }
+  else {
+    strcat(output, "drive!\r\n");
+    ST->turn(0);
+    ST->drive(50 * driveDirection);
+  }
+//  if(driveDirection == 1) {
+//    for(float i = 0; i < 12; i++) {
+//      if (i % 2 == 0) {
+//        LEDControl.setPWM(i, ledMaxBright);
+//      }
+//      else {
+//        LEDControl.setPWM(i, 0);
+//      }
+//    }
+//  }
+//  else {
+//    for (float i = 0; i < 12; i++) {
+//      if (i % 2 != 0) {
+//        LEDControl.setPWM(i, ledMaxBright);
+//      }
+//      else {
+//        LEDControl.setPWM(i, 0);
+//      }
+//    }      
+//  }
 }
 
-void echoCheck1(){
-    double ping_distance_front;
-    if(sonar1.check_timer()){
-//        Serial.print("Ping1: ");
-        ping_distance_front = (sonar1.ping_result/US_ROUNDTRIP_CM) * 0.39370079;
-//        Serial.print(ping_distance_front);
-//        Serial.println("in");
-        if(autonomousMode){
-            // Push back all previous values
-            double frontAverage = 0;
-            for(int i = NUM_PREV_VALUES-1; i >= 1; i--){
-                previousValuesFront[i] = previousValuesFront[i-1];
-                Serial.print(previousValuesFront[i]);
-                Serial.print(" ");
-                frontAverage += previousValuesFront[i];
-            }
-            // Add new value
-            previousValuesFront[0] = ping_distance_front;
-            frontAverage += ping_distance_front;
-            frontAverage = frontAverage/NUM_PREV_VALUES;
-            Serial.print("Average: ");
-            Serial.print(frontAverage);
-            Serial.println("in");
-            // Set the threshold based on the droid state
-            if(turning){
-                turnThreshold = 36;
-            }else{
-                turnThreshold = 15;
-            }
-            // Process new average
-            if(frontAverage < turnThreshold){
-                processFrontSensor(false);
-            }else{
-                processFrontSensor(true);
-            }
-        }
-    }
+void playBeep() {
+  MP3Trigger.trigger(BEEP_SONG_NUM);
 }
 
-void echoCheck2(){
-    double ping_distance_left;
-    if(sonar2.check_timer()){
-//        Serial.print("Ping2: ");
-        ping_distance_left = (sonar2.ping_result/US_ROUNDTRIP_CM) * 0.39370079;
-//        Serial.print(ping_distance_left);
-//        Serial.println("in");
-//        if(autonomousMode){
-//            // Push back all previous values
-//            double leftAverage = 0;
-//            for(int i = NUM_PREV_VALUES-1; i >= 1; i--){
-//                previousValuesLeft[i] = previousValuesLeft[i-1];
-//                Serial.print(previousValuesLeft[i]);
-//                Serial.print(" ");
-//                leftAverage += previousValuesLeft[i];
-//            }
-//            // Add new value
-//            previousValuesLeft[0] = ping_distance_left;
-//            leftAverage += ping_distance_left;
-//            leftAverage = leftAverage/NUM_PREV_VALUES;
-//            Serial.print("Average: ");
-//            Serial.print(leftAverage);
-//            Serial.println("in");
-//            // If leftAverage is greater than 4 inches we want to get closer to the wall
-//            if(leftAverage < 4){
-//                processFrontSensor(false);
-//            }else{
-//                processFrontSensor(true);
-//            }
-//        }
-    }
+void playExplosion() {
+  MP3Trigger.trigger(EXPLODE_SONG_NUM);
 }
-
-
-
+s
 // =======================================================================================
 //          Check Controller Function to show all PS3 Controller inputs are Working
 // =======================================================================================
@@ -336,8 +354,6 @@ void checkController()
      
      if (PS3Controller->PS3Connected && PS3Controller->getButtonPress(CIRCLE) && !extraClicks)
      {
-            //ST->turn(50);
-            //ST->drive(5);
             #ifdef SHADOW_DEBUG
                 strcat(output, "Button: CIRCLE Selected.\r\n");
             #endif      
@@ -352,8 +368,6 @@ void checkController()
             #ifdef SHADOW_DEBUG
                 strcat(output, "Button: CROSS Selected. Autonomous mode starting\r\n");
             #endif
-
-            autonomousMode = true;
             
             previousMillis = millis();
             extraClicks = true;
@@ -365,7 +379,6 @@ void checkController()
             #ifdef SHADOW_DEBUG
                 strcat(output, "Button: TRIANGLE Selected.\r\n");
             #endif       
-            
             previousMillis = millis();
             extraClicks = true;
               
@@ -377,8 +390,6 @@ void checkController()
             #ifdef SHADOW_DEBUG
                 strcat(output, "Button: SQUARE Selected. Autonomous mode ending\r\n");
             #endif
-
-            autonomousMode = false;
             
             previousMillis = millis();
             extraClicks = true;
@@ -400,7 +411,8 @@ void checkController()
             #ifdef SHADOW_DEBUG
                 strcat(output, "Button: LEFT 2 Selected.\r\n");
             #endif       
-            
+            routineOne = true;
+            rt1Timer = millis() + rt1PingInterval;
             previousMillis = millis();
             extraClicks = true;
      }
@@ -410,7 +422,7 @@ void checkController()
             #ifdef SHADOW_DEBUG
                 strcat(output, "Button: RIGHT 1 Selected.\r\n");
             #endif       
-            
+
             previousMillis = millis();
             extraClicks = true;
      }
@@ -456,7 +468,7 @@ void checkController()
      }
 
      if (PS3Controller->PS3Connected && ((abs(PS3Controller->getAnalogHat(LeftHatY)-128) > joystickDeadZoneRange) || (abs(PS3Controller->getAnalogHat(LeftHatX)-128) > joystickDeadZoneRange)))
-     {
+     { 
             
             int currentValueY = PS3Controller->getAnalogHat(LeftHatY) - 128;
             int currentValueX = PS3Controller->getAnalogHat(LeftHatX) - 128;
