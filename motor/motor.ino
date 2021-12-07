@@ -98,7 +98,7 @@ byte rightMotor = 1;
 byte leftMotor = 2;
 
 // ---------------------------------------------------------------------------------------
-//    Throw out 5 out every 6 inputs
+//    Throw out 5 out every 6 inputs on drive
 // ---------------------------------------------------------------------------------------
 int counter = 0;
 
@@ -120,21 +120,21 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
 #define SONAR_NUM 2
 #define PING_INTERVAL 100
 
-NewPing sonar1(TRIGGER_PIN_FRONT, ECHO_PIN_FRONT, MAX_DISTANCE);
-NewPing sonar2(TRIGGER_PIN_LEFT, ECHO_PIN_LEFT, MAX_DISTANCE);
+NewPing sonarFront(TRIGGER_PIN_FRONT, ECHO_PIN_FRONT, MAX_DISTANCE);
+//NewPing sonarLeft(TRIGGER_PIN_LEFT, ECHO_PIN_LEFT, MAX_DISTANCE);
 
 unsigned int pingSpeed = 200;
 unsigned long pingTimer1;
 unsigned long pingTimer2;
+
+boolean autonomousMode = false;
+
 unsigned long scaleTimer;
 unsigned long soundTimer;
 int soundDuration;
 int songNum;
 int volume;
 
-boolean autonomousMode = false;
-boolean turning = false;
-double turnThreshold;
 
 #define NUM_PREV_VALUES 7
 double previousValuesFront[NUM_PREV_VALUES] = {MAX_DISTANCE};
@@ -159,6 +159,12 @@ unsigned long songTimer;
 int rt1PingInterval = 4000;
 boolean routineOne = false;
 boolean playingBeep = false;
+
+// Light test variables
+int blinkInterval = 1000;
+unsigned long blinkTimer = 0;
+boolean lightsOn = false;
+
 // =======================================================================================
 //                                 Main Program
 // =======================================================================================
@@ -206,6 +212,10 @@ void setup()
     delay(2000);
     display.clearDisplay();
     soundTimer = millis() + 2000;
+
+    // Sonar setup
+    pingTimer1 = millis();
+    pingTimer2 = millis() + PING_INTERVAL;
 }
 
 // =======================================================================================
@@ -220,7 +230,7 @@ void loop()
         printOutput(output);
         return;
     }
-    
+
     // Check and output PS3 Controller inputs
     checkController();
     
@@ -231,6 +241,7 @@ void loop()
             extraClicks = false;
         }
     }
+
     // Control the Main Loop Blinker
     if ((blinkMillis + 1000) < millis()) {
         if (blinkOn) {
@@ -243,12 +254,74 @@ void loop()
         blinkMillis = millis();
     }
     
-    // Sound loop
-    if (routineOne) {
-      rt1();
+    // Sonar loop
+    if(millis() >= pingTimer1){
+        pingTimer1 += pingSpeed;
+        sonarFront.ping_timer(echoCheckFront);
     }
+
+    // Sound loop
+    // if (routineOne) {
+    //   rt1();
+    // }
     //MP3Trigger.update();
-    //LEDControl.write();
+
+    // Print debug output
+    printOutput(output);
+}
+
+
+
+// orange 9, white 10, green 11, blue 12
+// blue 4, purple 5, green 6
+// white 16, yellow 20, orange 21
+
+void echoCheckFront(){
+    if(sonarFront.check_timer()){
+        if(autonomousMode){
+            double ping_distance_front = (sonarFront.ping_result/US_ROUNDTRIP_CM) * 0.39370079;
+            double frontAverage = 0;
+            for(int i = NUM_PREV_VALUES-1; i >= 1; i--){
+                previousValuesFront[i] = previousValuesFront[i-1];
+                frontAverage += previousValuesFront[i];
+            }
+            // Add new value
+            previousValuesFront[0] = ping_distance_front;
+            frontAverage += ping_distance_front;
+            frontAverage = frontAverage/NUM_PREV_VALUES;
+            Serial.print("Front: ");
+            Serial.println(frontAverage);
+            
+            if(frontAverage < 4){
+                Serial.print("Stopping\r\n");
+                ST->drive(0);
+                ST->turn(0);
+            }else{
+                Serial.print("Going forward\r\n");
+                ST->drive(50);
+                ST->turn(0);
+            }
+        }
+    }
+}
+
+// Turns lights on/off every 500 ms
+void blinkLights(){
+    // Turn lights on initially, then set time to turn off
+    if(millis() > blinkTimer && !lightsOn){
+        LEDControl.setPWM(0, ledMaxBright);
+        LEDControl.setPWM(1, ledMaxBright);
+        blinkTimer = millis() + blinkInterval;
+        lightsOn = true;
+        Serial.print(F("\r\nLights on"));
+    }else if(millis() > blinkTimer && lightsOn){
+        LEDControl.setPWM(0, 0);
+        LEDControl.setPWM(1, 0);
+        blinkTimer = millis() + blinkInterval;
+        lightsOn = false;
+        Serial.print(F("\r\nLights off"));
+    }
+    LEDControl.write();
 }
 
 void rt1() {
@@ -302,7 +375,7 @@ void playBeep() {
 void playExplosion() {
   MP3Trigger.trigger(EXPLODE_SONG_NUM);
 }
-s
+
 // =======================================================================================
 //          Check Controller Function to show all PS3 Controller inputs are Working
 // =======================================================================================
@@ -368,7 +441,10 @@ void checkController()
             #ifdef SHADOW_DEBUG
                 strcat(output, "Button: CROSS Selected. Autonomous mode starting\r\n");
             #endif
-            
+
+            Serial.print("Starting autonomous mode\r\n");
+
+            autonomousMode = true;
             previousMillis = millis();
             extraClicks = true;
               
@@ -390,7 +466,10 @@ void checkController()
             #ifdef SHADOW_DEBUG
                 strcat(output, "Button: SQUARE Selected. Autonomous mode ending\r\n");
             #endif
+
+            Serial.print("Stopping autonomous mode\r\n");
             
+            autonomousMode = false;
             previousMillis = millis();
             extraClicks = true;
               
@@ -508,15 +587,6 @@ void checkController()
 
             char xString[5];
             itoa(currentValueX, xString, 10);
-            
-//            #ifdef SHADOW_DEBUG
-//                strcat(output, "RIGHT Joystick Y Value: ");
-//                strcat(output, yString);
-//                strcat(output, "\n");
-//                strcat(output, "RIGHT Joystick X Value: ");
-//                strcat(output, xString);
-//                strcat(output, "\r\n");
-//            #endif
 
             previousMillis = millis();
             extraClicks = true;
@@ -532,12 +602,11 @@ void moveDroid(int x, int y){
         y = (y/2) * -1;
         char drivePower[6];
         itoa(y, drivePower, 10);
-    
-        #ifdef SHADOW_DEBUG
-            strcat(output, "setting drive power to: ");
-            strcat(output, drivePower);
-            strcat(output, "\r\n");
-        #endif
+
+        Serial.print("Drive power set to :");
+        Serial.print(drivePower);
+        Serial.print("\r\n");
+        
         ST->drive(y);
         if(x < joystickDeadZoneRange and x > joystickDeadZoneRange * -1){
             ST->turn(0);
@@ -547,12 +616,10 @@ void moveDroid(int x, int y){
     if(x > joystickDeadZoneRange or x < joystickDeadZoneRange * -1){
         char turnPower[6];
         itoa(x/3, turnPower, 10);
-    
-        #ifdef SHADOW_DEBUG
-            strcat(output, "setting turn power to: ");
-            strcat(output, turnPower);
-            strcat(output, "\r\n");
-        #endif
+
+        Serial.print("Turn power set to :");
+        Serial.print(turnPower);
+        Serial.print("\r\n");
 
         ST->turn(x/3);
         if(y < joystickDeadZoneRange and y > joystickDeadZoneRange * -1){
