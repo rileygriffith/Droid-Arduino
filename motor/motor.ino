@@ -48,7 +48,7 @@ int oldTurnNum = 0;
 int oldFootDriveSpeed = 0;
 byte driveDeadBandRange = 10;
 #define SABERTOOTH_ADDR 128
-Sabertooth *ST=new Sabertooth(SABERTOOTH_ADDR, Serial);
+Sabertooth *ST=new Sabertooth(SABERTOOTH_ADDR, Serial1);
 
 Adafruit_TLC5947 LEDControl = Adafruit_TLC5947(1, clock, data, latch);
 int ledMaxBright = 4000;
@@ -159,11 +159,17 @@ unsigned long songTimer;
 int rt1PingInterval = 4000;
 boolean routineOne = false;
 boolean playingBeep = false;
+boolean redLights = false;
 
-// Light test variables
+// Light blink variables
 int blinkInterval = 1000;
 unsigned long blinkTimer = 0;
 boolean lightsOn = false;
+
+// Light scroll variables
+int scrollInterval = 100;
+int lightNum = 0;
+unsigned long scrollTimer = 0;
 
 // =======================================================================================
 //                                 Main Program
@@ -174,11 +180,15 @@ boolean lightsOn = false;
 void setup()
 {
     //Debug Serial for use with USB Debugging
-    Serial.begin(9600);
-    ST->autobaud();
-    ST->setTimeout(200);
-    ST->setDeadband(driveDeadBandRange);
+    Serial.begin(115200);
     while (!Serial);
+
+    // Sabertooth
+    Serial1.begin(9600);
+    ST->autobaud();
+    ST->setTimeout(400);
+    ST->setDeadband(driveDeadBandRange);
+
     
     if (Usb.Init() == -1)
     {
@@ -200,11 +210,7 @@ void setup()
     MP3Trigger.setup(&Serial2);
     Serial2.begin(MP3Trigger::serialRate());
 
-
-    LEDControl.begin(); 
-    LEDControl.setPWM(0, 0);
-    LEDControl.setPWM(1, 0);
-    LEDControl.write();
+    LEDControl.begin();
     
     // Display setup
     display.begin(SSD1306_SWITCHCAPVCC, 0X3C);
@@ -260,11 +266,16 @@ void loop()
         sonarFront.ping_timer(echoCheckFront);
     }
 
-    // Sound loop
-    // if (routineOne) {
-    //   rt1();
-    // }
-    //MP3Trigger.update();
+//    blinkLights();
+//    scrollLights();
+
+      // Sound loop
+     if (routineOne) {
+       rt1();
+     }else{
+        scrollLights();
+     }
+    MP3Trigger.update();
 
     // Print debug output
     printOutput(output);
@@ -292,7 +303,7 @@ void echoCheckFront(){
             Serial.print("Front: ");
             Serial.println(frontAverage);
             
-            if(frontAverage < 4){
+            if(frontAverage < 5){
                 Serial.print("Stopping\r\n");
                 ST->drive(0);
                 ST->turn(0);
@@ -305,31 +316,12 @@ void echoCheckFront(){
     }
 }
 
-// Turns lights on/off every 500 ms
-void blinkLights(){
-    // Turn lights on initially, then set time to turn off
-    if(millis() > blinkTimer && !lightsOn){
-        LEDControl.setPWM(0, ledMaxBright);
-        LEDControl.setPWM(1, ledMaxBright);
-        blinkTimer = millis() + blinkInterval;
-        lightsOn = true;
-        Serial.print(F("\r\nLights on"));
-    }else if(millis() > blinkTimer && lightsOn){
-        LEDControl.setPWM(0, 0);
-        LEDControl.setPWM(1, 0);
-        blinkTimer = millis() + blinkInterval;
-        lightsOn = false;
-        Serial.print(F("\r\nLights off"));
-    }
-    LEDControl.write();
-}
+
 
 void rt1() {
   if(rt1PingInterval < 500) {
     strcat(output, "Explode!\r\n");
     playExplosion();
-    LEDControl.setPWM(0, ledMaxBright);
-    LEDControl.setPWM(1, ledMaxBright);
     routineOne = false;
     LEDControl.write();
     return;
@@ -338,6 +330,8 @@ void rt1() {
     strcat(output, "change direction!\r\n");
     driveDirection = driveDirection * -1;
     playBeep();
+    redLights = redLights ^ true;
+    
     rt1PingInterval -= 500;
     rt1Timer = millis() + rt1PingInterval;
   }
@@ -345,6 +339,13 @@ void rt1() {
     strcat(output, "drive!\r\n");
     ST->turn(0);
     ST->drive(50 * driveDirection);
+    if(!redLights){
+        turnOnWhite();
+        LEDControl.write();
+    }else{
+        turnOnRed();
+        LEDControl.write();
+    }
   }
 //  if(driveDirection == 1) {
 //    for(float i = 0; i < 12; i++) {
@@ -366,6 +367,85 @@ void rt1() {
 //      }
 //    }      
 //  }
+}
+
+// Lighting functions
+// Scrolls through all lights
+void scrollLights(){
+    if(millis() > scrollTimer){
+        LEDControl.setPWM(lightNum, ledMaxBright);
+        for(int i = 0; i < 12; i++){
+            if(i != lightNum){
+                LEDControl.setPWM(i, 0);
+            }
+        }
+        scrollTimer = millis() + scrollInterval;
+        lightNum += 1;
+        if(lightNum > 11) lightNum = 0;
+    }
+    LEDControl.write();
+}
+
+void turnOnAll(){
+    LEDControl.setPWM(0, ledMaxBright);
+    LEDControl.setPWM(1, ledMaxBright);
+    LEDControl.setPWM(2, ledMaxBright);
+    LEDControl.setPWM(3, ledMaxBright);
+    LEDControl.setPWM(4, ledMaxBright);
+    LEDControl.setPWM(5, ledMaxBright);
+    LEDControl.setPWM(6, ledMaxBright);
+    LEDControl.setPWM(7, ledMaxBright);
+    LEDControl.setPWM(8, ledMaxBright);
+    LEDControl.setPWM(9, ledMaxBright);
+    LEDControl.setPWM(10, ledMaxBright);
+    LEDControl.setPWM(11, ledMaxBright);
+}
+
+void turnOnRed(){
+    LEDControl.setPWM(0, 0);
+    LEDControl.setPWM(1, ledMaxBright);
+    LEDControl.setPWM(2, 0);
+    LEDControl.setPWM(3, ledMaxBright);
+    LEDControl.setPWM(4, 0);
+    LEDControl.setPWM(5, ledMaxBright);
+    LEDControl.setPWM(6, 0);
+    LEDControl.setPWM(7, ledMaxBright);
+    LEDControl.setPWM(8, 0);
+    LEDControl.setPWM(9, ledMaxBright);
+    LEDControl.setPWM(10, 0);
+    LEDControl.setPWM(11, ledMaxBright);
+}
+
+void turnOnWhite(){
+    LEDControl.setPWM(0, ledMaxBright);
+    LEDControl.setPWM(1, 0);
+    LEDControl.setPWM(2, ledMaxBright);
+    LEDControl.setPWM(3, 0);
+    LEDControl.setPWM(4, ledMaxBright);
+    LEDControl.setPWM(5, 0);
+    LEDControl.setPWM(6, ledMaxBright);
+    LEDControl.setPWM(7, 0);
+    LEDControl.setPWM(8, ledMaxBright);
+    LEDControl.setPWM(9, 0);
+    LEDControl.setPWM(10, ledMaxBright);
+    LEDControl.setPWM(11, 0);
+}
+
+// Turns lights on/off every 500 ms
+void blinkLights(){
+    // Turn lights on initially, then set time to turn off
+    if(millis() > blinkTimer && !lightsOn){
+        turnOnWhite();
+        blinkTimer = millis() + blinkInterval;
+        lightsOn = true;
+//        Serial.print(F("\r\nLights on"));
+    }else if(millis() > blinkTimer && lightsOn){
+        turnOnRed();
+        blinkTimer = millis() + blinkInterval;
+        lightsOn = false;
+//        Serial.print(F("\r\nLights off"));
+    }
+    LEDControl.write();
 }
 
 void playBeep() {
@@ -490,7 +570,7 @@ void checkController()
             #ifdef SHADOW_DEBUG
                 strcat(output, "Button: LEFT 2 Selected.\r\n");
             #endif       
-            routineOne = true;
+            routineOne = true;            
             rt1Timer = millis() + rt1PingInterval;
             previousMillis = millis();
             extraClicks = true;
