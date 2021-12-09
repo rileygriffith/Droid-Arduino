@@ -162,14 +162,15 @@ boolean playingBeep = false;
 boolean redLights = false;
 
 // Light blink variables
-int blinkInterval = 1000;
+int blinkInterval = 300;
 unsigned long blinkTimer = 0;
 boolean lightsOn = false;
 
 // Light scroll variables
-int scrollInterval = 100;
+int scrollInterval = 50;
 int lightNum = 0;
 unsigned long scrollTimer = 0;
+boolean backward = false;
 
 // =======================================================================================
 //                                 Main Program
@@ -266,15 +267,17 @@ void loop()
         sonarFront.ping_timer(echoCheckFront);
     }
 
-//    blinkLights();
+//    alternateLights();
 //    scrollLights();
 
-      // Sound loop
-     if (routineOne) {
-       rt1();
-     }else{
-        scrollLights();
-     }
+    // Routines loop
+    if (routineOne) {
+      rt1();
+    }else{
+//      scrollLights();
+//      backAndForth();
+//      blinkLights();
+    }
     MP3Trigger.update();
 
     // Print debug output
@@ -305,10 +308,12 @@ void echoCheckFront(){
             
             if(frontAverage < 5){
                 Serial.print("Stopping\r\n");
+                blinkLights();
                 ST->drive(0);
                 ST->turn(0);
             }else{
                 Serial.print("Going forward\r\n");
+                backAndForth();
                 ST->drive(50);
                 ST->turn(0);
             }
@@ -338,7 +343,7 @@ void rt1() {
   else {
     strcat(output, "drive!\r\n");
     ST->turn(0);
-    ST->drive(50 * driveDirection);
+    ST->drive(40 * driveDirection);
     if(!redLights){
         turnOnWhite();
         LEDControl.write();
@@ -386,6 +391,32 @@ void scrollLights(){
     LEDControl.write();
 }
 
+void backAndForth(){
+    if(millis() > scrollTimer){
+        LEDControl.setPWM(lightNum, ledMaxBright);
+        for(int i = 0; i < 12; i++){
+            if(i != lightNum){
+                LEDControl.setPWM(i, 0);
+            }
+        }
+        scrollTimer = millis() + scrollInterval;
+        if(!backward){
+            lightNum += 1;
+            if(lightNum > 11){
+                lightNum = 10;
+                backward = true;
+            }
+        }else{
+            lightNum -= 1;
+            if(lightNum < 0){
+                lightNum = 1;
+                backward = false;
+            }
+        }
+    }
+    LEDControl.write();
+}
+
 void turnOnAll(){
     LEDControl.setPWM(0, ledMaxBright);
     LEDControl.setPWM(1, ledMaxBright);
@@ -399,6 +430,21 @@ void turnOnAll(){
     LEDControl.setPWM(9, ledMaxBright);
     LEDControl.setPWM(10, ledMaxBright);
     LEDControl.setPWM(11, ledMaxBright);
+}
+
+void turnOffAll(){
+    LEDControl.setPWM(0, 0);
+    LEDControl.setPWM(1, 0);
+    LEDControl.setPWM(2, 0);
+    LEDControl.setPWM(3, 0);
+    LEDControl.setPWM(4, 0);
+    LEDControl.setPWM(5, 0);
+    LEDControl.setPWM(6, 0);
+    LEDControl.setPWM(7, 0);
+    LEDControl.setPWM(8, 0);
+    LEDControl.setPWM(9, 0);
+    LEDControl.setPWM(10, 0);
+    LEDControl.setPWM(11, 0);
 }
 
 void turnOnRed(){
@@ -432,18 +478,30 @@ void turnOnWhite(){
 }
 
 // Turns lights on/off every 500 ms
-void blinkLights(){
+void alternateLights(){
     // Turn lights on initially, then set time to turn off
     if(millis() > blinkTimer && !lightsOn){
         turnOnWhite();
         blinkTimer = millis() + blinkInterval;
         lightsOn = true;
-//        Serial.print(F("\r\nLights on"));
     }else if(millis() > blinkTimer && lightsOn){
         turnOnRed();
         blinkTimer = millis() + blinkInterval;
         lightsOn = false;
-//        Serial.print(F("\r\nLights off"));
+    }
+    LEDControl.write();
+}
+
+void blinkLights(){
+    // Turn lights on initially, then set time to turn off
+    if(millis() > blinkTimer && !lightsOn){
+        turnOnAll();
+        blinkTimer = millis() + blinkInterval;
+        lightsOn = true;
+    }else if(millis() > blinkTimer && lightsOn){
+        turnOffAll();
+        blinkTimer = millis() + blinkInterval;
+        lightsOn = false;
     }
     LEDControl.write();
 }
