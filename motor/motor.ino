@@ -172,6 +172,13 @@ int lightNum = 0;
 unsigned long scrollTimer = 0;
 boolean backward = false;
 
+// Light state variables
+boolean backAndForthFlag = true;
+boolean scrollLightsFlag = false;
+boolean blinkLightsFlag = false;
+boolean alternateLightsFlag = false;
+boolean turnAllOnFlag = false;
+
 // =======================================================================================
 //                                 Main Program
 // =======================================================================================
@@ -262,28 +269,35 @@ void loop()
     }
     
     // Sonar loop
-//    if(millis() >= pingTimer1){
-//        pingTimer1 += pingSpeed;
-//        sonarFront.ping_timer(echoCheckFront);
-//    }
+    if(millis() >= pingTimer1){
+        pingTimer1 += pingSpeed;
+        sonarFront.ping_timer(echoCheckFront);
+    }
     if(millis() >= pingTimer2){
         pingTimer2 += pingSpeed;
         sonarLeft.ping_timer(echoCheckLeft);
     }
 
-//    alternateLights();
-//    scrollLights();
-
     // Routines loop
     if (routineOne) {
-      rt1();
+        backAndForthFlag = blinkLightsFlag = scrollLightsFlag = alternateLightsFlag = turnAllOnFlag = false;
+        rt1();
+    }
+
+    // What do we want the lights to do
+    if(backAndForthFlag){
+        backAndForth();
+    }else if(scrollLightsFlag){
+        scrollLights();
+    }else if(blinkLightsFlag){
+        blinkLights();
+    }else if(alternateLightsFlag){
+        alternateLights();
+    }else if(turnAllOnFlag){
+        turnOnAll();
     }
     
     MP3Trigger.update();
-
-    if(!routineOne and !autonomousMode){
-        backAndForth();
-    }
 
     // Print debug output
     printOutput(output);
@@ -305,15 +319,17 @@ void echoCheckFront(){
             Serial.print("Front: ");
             Serial.println(frontAverage);
             
-            if(frontAverage < 5){
+            if(frontAverage < 6){
                 Serial.print("Stopping\r\n");
-                blinkLights();
+                backAndForthFlag = scrollLightsFlag = alternateLightsFlag = turnAllOnFlag = false;
+                blinkLightsFlag = true;
                 ST->drive(0);
-                ST->turn(0);
+                ST->turn(40);
             }else{
                 Serial.print("Going forward\r\n");
-                backAndForth();
-                ST->drive(50);
+                blinkLightsFlag = scrollLightsFlag = alternateLightsFlag = turnAllOnFlag = false;
+                backAndForthFlag = true;
+                ST->drive(40);
                 ST->turn(0);
             }
         }
@@ -322,7 +338,6 @@ void echoCheckFront(){
 
 void echoCheckLeft(){
     if(sonarLeft.check_timer()){
-        Serial.println("Inside echoCheckLeft");
         if(autonomousMode){
             double ping_distance_left = (sonarLeft.ping_result/US_ROUNDTRIP_CM) * 0.39370079;
             double leftAverage = 0;
@@ -337,10 +352,12 @@ void echoCheckLeft(){
             Serial.print("Left: ");
             Serial.println(leftAverage);
 
-            if(leftAverage < 5){
-                blinkLights();
-            }else{
-                backAndForth();
+            if(leftAverage < 2){
+                ST->turn(-20);
+                ST->drive(0);
+            }else if(leftAverage > 3){
+                ST->turn(20);
+                ST->drive(0);
             }
         }
     }
@@ -455,6 +472,7 @@ void turnOnAll(){
     LEDControl.setPWM(9, ledMaxBright);
     LEDControl.setPWM(10, ledMaxBright);
     LEDControl.setPWM(11, ledMaxBright);
+    LEDControl.write();
 }
 
 void turnOffAll(){
@@ -470,6 +488,7 @@ void turnOffAll(){
     LEDControl.setPWM(9, 0);
     LEDControl.setPWM(10, 0);
     LEDControl.setPWM(11, 0);
+    LEDControl.write();
 }
 
 void turnOnRed(){
@@ -528,7 +547,6 @@ void blinkLights(){
         blinkTimer = millis() + blinkInterval;
         lightsOn = false;
     }
-    LEDControl.write();
 }
 
 void playBeep() {
