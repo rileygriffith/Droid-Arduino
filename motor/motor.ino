@@ -121,7 +121,7 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
 #define PING_INTERVAL 100
 
 NewPing sonarFront(TRIGGER_PIN_FRONT, ECHO_PIN_FRONT, MAX_DISTANCE);
-//NewPing sonarLeft(TRIGGER_PIN_LEFT, ECHO_PIN_LEFT, MAX_DISTANCE);
+NewPing sonarLeft(TRIGGER_PIN_LEFT, ECHO_PIN_LEFT, MAX_DISTANCE);
 
 unsigned int pingSpeed = 200;
 unsigned long pingTimer1;
@@ -262,9 +262,13 @@ void loop()
     }
     
     // Sonar loop
-    if(millis() >= pingTimer1){
-        pingTimer1 += pingSpeed;
-        sonarFront.ping_timer(echoCheckFront);
+//    if(millis() >= pingTimer1){
+//        pingTimer1 += pingSpeed;
+//        sonarFront.ping_timer(echoCheckFront);
+//    }
+    if(millis() >= pingTimer2){
+        pingTimer2 += pingSpeed;
+        sonarLeft.ping_timer(echoCheckLeft);
     }
 
 //    alternateLights();
@@ -273,22 +277,17 @@ void loop()
     // Routines loop
     if (routineOne) {
       rt1();
-    }else{
-//      scrollLights();
-//      backAndForth();
-//      blinkLights();
     }
+    
     MP3Trigger.update();
+
+    if(!routineOne and !autonomousMode){
+        backAndForth();
+    }
 
     // Print debug output
     printOutput(output);
 }
-
-
-
-// orange 9, white 10, green 11, blue 12
-// blue 4, purple 5, green 6
-// white 16, yellow 20, orange 21
 
 void echoCheckFront(){
     if(sonarFront.check_timer()){
@@ -316,6 +315,32 @@ void echoCheckFront(){
                 backAndForth();
                 ST->drive(50);
                 ST->turn(0);
+            }
+        }
+    }
+}
+
+void echoCheckLeft(){
+    if(sonarLeft.check_timer()){
+        Serial.println("Inside echoCheckLeft");
+        if(autonomousMode){
+            double ping_distance_left = (sonarLeft.ping_result/US_ROUNDTRIP_CM) * 0.39370079;
+            double leftAverage = 0;
+            for(int i = NUM_PREV_VALUES-1; i >= 1; i--){
+                previousValuesLeft[i] = previousValuesLeft[i-1];
+                leftAverage += previousValuesLeft[i];
+            }
+            // Add new value
+            previousValuesLeft[0] = ping_distance_left;
+            leftAverage += ping_distance_left;
+            leftAverage = leftAverage/NUM_PREV_VALUES;
+            Serial.print("Left: ");
+            Serial.println(leftAverage);
+
+            if(leftAverage < 5){
+                blinkLights();
+            }else{
+                backAndForth();
             }
         }
     }
