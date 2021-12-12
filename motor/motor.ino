@@ -126,6 +126,9 @@ NewPing sonarLeft(TRIGGER_PIN_LEFT, ECHO_PIN_LEFT, MAX_DISTANCE);
 unsigned int pingSpeed = 200;
 unsigned long pingTimer1;
 unsigned long pingTimer2;
+boolean correctLeft = false;
+boolean correctRight = false;
+unsigned long extraTurnTimer = 0;
 
 boolean autonomousMode = false;
 
@@ -318,19 +321,55 @@ void echoCheckFront(){
             frontAverage = frontAverage/NUM_PREV_VALUES;
             Serial.print("Front: ");
             Serial.println(frontAverage);
-            
-            if(frontAverage < 6){
-                Serial.print("Stopping\r\n");
+
+            if(millis() >= extraTurnTimer){
+                if(frontAverage < 6){
+                    Serial.print("Turning\r\n");
+                    backAndForthFlag = scrollLightsFlag = alternateLightsFlag = turnAllOnFlag = false;
+                    blinkLightsFlag = true;
+    
+                    // must turn for extra time
+                    extraTurnTimer = millis() + 1800;
+                    
+                    ST->drive(0);
+                    ST->turn(40);
+                }else if(frontAverage < 25 and frontAverage > 6){
+                    backAndForthFlag = scrollLightsFlag = alternateLightsFlag = turnAllOnFlag = false;
+                    blinkLightsFlag = true;
+                    
+                    ST->drive(25);
+                    if(correctRight){
+                        Serial.println("Correcting right reduced speed");
+                        ST->turn(10);
+                    }else if(correctLeft){
+                        Serial.println("Correcting left reduced speed");
+                        ST->turn(-10);
+                    }else{
+                        Serial.println("Going straight reduced speed");
+                        ST->turn(0);
+                    }
+                }else{
+                    blinkLightsFlag = scrollLightsFlag = alternateLightsFlag = turnAllOnFlag = false;
+                    backAndForthFlag = true;
+                    
+                    ST->drive(50);
+                    if(correctRight){
+                        Serial.println("Correcting right");
+                        ST->turn(10);
+                    }else if(correctLeft){
+                        Serial.println("Correcting left");
+                        ST->turn(-10);
+                    }else{
+                        Serial.println("Going straight");
+                        ST->turn(0);
+                    }
+                }
+            }else{
+                Serial.println("Automatic turn");
                 backAndForthFlag = scrollLightsFlag = alternateLightsFlag = turnAllOnFlag = false;
                 blinkLightsFlag = true;
                 ST->drive(0);
                 ST->turn(40);
-            }else{
-                Serial.print("Going forward\r\n");
-                blinkLightsFlag = scrollLightsFlag = alternateLightsFlag = turnAllOnFlag = false;
-                backAndForthFlag = true;
-                ST->drive(40);
-                ST->turn(0);
             }
         }
     }
@@ -352,12 +391,15 @@ void echoCheckLeft(){
             Serial.print("Left: ");
             Serial.println(leftAverage);
 
-            if(leftAverage < 2){
-                ST->turn(-20);
-                ST->drive(0);
-            }else if(leftAverage > 3){
-                ST->turn(20);
-                ST->drive(0);
+            if(leftAverage < 3){
+                correctRight = true;
+                correctLeft = false;
+            }else if(leftAverage > 6){
+                correctLeft = true;
+                correctRight = false;
+            }else{
+                correctLeft = false;
+                correctRight = false;
             }
         }
     }
