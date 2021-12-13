@@ -172,6 +172,11 @@ unsigned long rt2Timer;
 boolean routineTwo = false;
 boolean rt2State = 0;
 
+// ROUTINE THREE VARIABLES
+unsigned long rt3Timer;
+boolean routineThree = false;
+int rt3State = 0;
+
 // Light blink variables
 int blinkInterval = 300;
 unsigned long blinkTimer = 0;
@@ -187,6 +192,16 @@ boolean backward = false;
 // 0 = backAndForth, 1 = scrollLights, 2 = blinkLights, 3 = alternateLights, 4 = turnOnAll
 int lightEnum = 3;
 
+typedef enum LightMode {
+  BACK_AND_FORTH = 0,
+  SCROLL = 1,
+  BLINK = 2,
+  ALTERNATE = 3,
+  ALL_ON = 4
+};
+
+LightMode lightMode;
+
 // =======================================================================================
 //                                 Main Program
 // =======================================================================================
@@ -195,6 +210,7 @@ int lightEnum = 3;
 // =======================================================================================
 void setup()
 {
+    lightMode = BLINK;
     //Debug Serial for use with USB Debugging
     Serial.begin(115200);
     while (!Serial);
@@ -254,7 +270,7 @@ void loop()
         printOutput(output);
         return;
     }
-
+    Serial.println(BACK_AND_FORTH); 
     // Check and output PS3 Controller inputs
     checkController();
     
@@ -303,17 +319,20 @@ void loop()
     else if(routineTwo) {
       rt2();
     }
+    else if(routineThree) {
+      rt3();
+    }
 
     // What do we want the lights to do
-    if(lightEnum == 0){
+    if(lightMode == BACK_AND_FORTH){
         backAndForth();
-    }else if(lightEnum == 1){
+    }else if(lightMode == SCROLL){
         scrollLights();
-    }else if(lightEnum == 2){
+    }else if(lightMode == BLINK){
         blinkLights();
-    }else if(lightEnum == 3){
+    }else if(lightMode == ALTERNATE){
         alternateLights();
-    }else if(lightEnum == 4){
+    }else if(lightMode == ALL_ON){
         turnOnAll();
     }
     
@@ -341,7 +360,7 @@ void echoCheckFront(){
 
             if(millis() >= extraTurnTimer){
                 if(frontAverage < 6){
-                    lightEnum = 2;
+                    lightMode = BLINK;
     
                     // must turn for extra time
                     extraTurnTimer = millis() + 1800;
@@ -349,7 +368,7 @@ void echoCheckFront(){
                     ST->drive(0);
                     ST->turn(40);
                 }else if(frontAverage < 25 and frontAverage > 6){
-                    lightEnum = 2;
+                    lightMode = BLINK;
                     
                     ST->drive(25);
                     if(correctRight){
@@ -360,7 +379,7 @@ void echoCheckFront(){
                         ST->turn(0);
                     }
                 }else{
-                    lightEnum = 0;
+                    lightMode = BACK_AND_FORTH;
                     
                     ST->drive(50);
                     if(correctRight){
@@ -372,7 +391,7 @@ void echoCheckFront(){
                     }
                 }
             }else{
-                lightEnum = 2;
+                lightMode = BLINK;
                 ST->drive(0);
                 ST->turn(40);
             }
@@ -469,23 +488,38 @@ void rt2() {
     rt2State = 1;
     MP3Trigger.trigger(4);
     rt2Timer = millis() + random(3000, 9000);
-    flipLights(1);
+    lightMode = SCROLL;
   }
   else if (millis() > rt2Timer && rt2State == 1) {
     rt2State = 0;
     MP3Trigger.trigger(3);
     rt2Timer = millis() + random(6000, 15000);
-    flipLights(0);
+    lightMode = ALTERNATE;
   }
 
   /* Logic */
   if(rt2State == 0) {
-    ST->turn(90);
+    ST->turn(20);
     ST->drive(0);
   }
   else {
-    ST->turn(-90);
+    ST->turn(-40);
     ST->drive(0);
+  }
+}
+
+void rt3() {
+  if(millis() > rt3Timer) {
+    rt3State = 1;
+  }
+  
+  if(rt3State == 0) {
+    lightMode = SCROLL;
+  }
+  else {
+    lightMode = ALL_ON;
+    myServo.write(90);
+    routineThree = false;
   }
 }
 
@@ -755,7 +789,10 @@ void checkController()
             #ifdef SHADOW_DEBUG
                 strcat(output, "Button: RIGHT 1 Selected.\r\n");
             #endif       
-
+            routineThree = true;
+            rt3Timer = millis() + 6400;
+            MP3Trigger.trigger(5);
+            lightMode = SCROLL;
             previousMillis = millis();
             extraClicks = true;
      }
@@ -767,6 +804,8 @@ void checkController()
             #endif       
             routineTwo = true;
             rt2Timer = millis() + random(6000, 15000);
+            MP3Trigger.trigger(3);
+            lightMode = ALTERNATE;
             previousMillis = millis();
             extraClicks = true;
      }
