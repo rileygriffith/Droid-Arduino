@@ -40,6 +40,9 @@
 USB Usb;
 BTD Btd(&Usb);
 PS3BT *PS3Controller=new PS3BT(&Btd);
+Servo myServo;
+
+int servoPos=90;
 
 // Declare MP3 Trigger
 MP3Trigger MP3Trigger;
@@ -161,6 +164,11 @@ boolean routineOne = false;
 boolean playingBeep = false;
 boolean redLights = false;
 
+// ROUTINE TWO VARIABLES
+unsigned long rt2Timer;
+boolean routineTwo = false;
+boolean rt2State = 0;
+
 // Light blink variables
 int blinkInterval = 300;
 unsigned long blinkTimer = 0;
@@ -219,6 +227,8 @@ void setup()
     Serial2.begin(MP3Trigger::serialRate());
 
     LEDControl.begin();
+
+    myServo.attach(8);
     
     // Display setup
     display.begin(SSD1306_SWITCHCAPVCC, 0X3C);
@@ -270,6 +280,13 @@ void loop()
     
     // Sonar loop
     if(millis() >= pingTimer1){
+      if(servoPos == 90) {
+        servoPos = 5;
+      }
+      else {
+        servoPos = 90;
+      }
+      //myServo.write(servoPos);
         pingTimer1 += pingSpeed;
         sonarFront.ping_timer(echoCheckFront);
     }
@@ -282,6 +299,9 @@ void loop()
     if (routineOne) {
         backAndForthFlag = blinkLightsFlag = scrollLightsFlag = alternateLightsFlag = turnAllOnFlag = false;
         rt1();
+    }
+    else if(routineTwo) {
+      rt2();
     }
 
     // What do we want the lights to do
@@ -414,6 +434,32 @@ void rt1() {
 //      }
 //    }      
 //  }
+}
+
+void rt2() {
+  /* State management */
+  if(millis() > rt2Timer && rt2State == 0) {
+    rt2State = 1;
+    MP3Trigger.trigger(4);
+    rt2Timer = millis() + random(3000, 9000);
+    flipLights(1);
+  }
+  else if (millis() > rt2Timer && rt2State == 1) {
+    rt2State = 0;
+    MP3Trigger.trigger(3);
+    rt2Timer = millis() + random(6000, 15000);
+    flipLights(0);
+  }
+
+  /* Logic */
+  if(rt2State == 0) {
+    ST->turn(90);
+    ST->drive(0);
+  }
+  else {
+    ST->turn(-90);
+    ST->drive(0);
+  }
 }
 
 // Lighting functions
@@ -692,7 +738,8 @@ void checkController()
             #ifdef SHADOW_DEBUG
                 strcat(output, "Button: RIGHT 2 Selected.\r\n");
             #endif       
-            
+            routineTwo = true;
+            rt2Timer = millis() + random(6000, 15000);
             previousMillis = millis();
             extraClicks = true;
      }
