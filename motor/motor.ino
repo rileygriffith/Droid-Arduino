@@ -176,11 +176,8 @@ unsigned long scrollTimer = 0;
 boolean backward = false;
 
 // Light state variables
-boolean backAndForthFlag = true;
-boolean scrollLightsFlag = false;
-boolean blinkLightsFlag = false;
-boolean alternateLightsFlag = false;
-boolean turnAllOnFlag = false;
+// 0 = backAndForth, 1 = scrollLights, 2 = blinkLights, 3 = alternateLights, 4 = turnOnAll
+int lightEnum = 3;
 
 // =======================================================================================
 //                                 Main Program
@@ -283,20 +280,20 @@ void loop()
 
     // Routines loop
     if (routineOne) {
-        backAndForthFlag = blinkLightsFlag = scrollLightsFlag = alternateLightsFlag = turnAllOnFlag = false;
+        lightEnum = -1;
         rt1();
     }
-
+    
     // What do we want the lights to do
-    if(backAndForthFlag){
+    if(lightEnum == 0){
         backAndForth();
-    }else if(scrollLightsFlag){
+    }else if(lightEnum == 1){
         scrollLights();
-    }else if(blinkLightsFlag){
+    }else if(lightEnum == 2){
         blinkLights();
-    }else if(alternateLightsFlag){
+    }else if(lightEnum == 3){
         alternateLights();
-    }else if(turnAllOnFlag){
+    }else if(lightEnum == 4){
         turnOnAll();
     }
     
@@ -319,14 +316,12 @@ void echoCheckFront(){
             previousValuesFront[0] = ping_distance_front;
             frontAverage += ping_distance_front;
             frontAverage = frontAverage/NUM_PREV_VALUES;
-            Serial.print("Front: ");
-            Serial.println(frontAverage);
+//            Serial.print("Front: ");
+//            Serial.println(frontAverage);
 
             if(millis() >= extraTurnTimer){
                 if(frontAverage < 6){
-                    Serial.print("Turning\r\n");
-                    backAndForthFlag = scrollLightsFlag = alternateLightsFlag = turnAllOnFlag = false;
-                    blinkLightsFlag = true;
+                    lightEnum = 2;
     
                     // must turn for extra time
                     extraTurnTimer = millis() + 1800;
@@ -334,40 +329,30 @@ void echoCheckFront(){
                     ST->drive(0);
                     ST->turn(40);
                 }else if(frontAverage < 25 and frontAverage > 6){
-                    backAndForthFlag = scrollLightsFlag = alternateLightsFlag = turnAllOnFlag = false;
-                    blinkLightsFlag = true;
+                    lightEnum = 2;
                     
                     ST->drive(25);
                     if(correctRight){
-                        Serial.println("Correcting right reduced speed");
                         ST->turn(10);
                     }else if(correctLeft){
-                        Serial.println("Correcting left reduced speed");
                         ST->turn(-10);
                     }else{
-                        Serial.println("Going straight reduced speed");
                         ST->turn(0);
                     }
                 }else{
-                    blinkLightsFlag = scrollLightsFlag = alternateLightsFlag = turnAllOnFlag = false;
-                    backAndForthFlag = true;
+                    lightEnum = 0;
                     
                     ST->drive(50);
                     if(correctRight){
-                        Serial.println("Correcting right");
                         ST->turn(10);
                     }else if(correctLeft){
-                        Serial.println("Correcting left");
                         ST->turn(-10);
                     }else{
-                        Serial.println("Going straight");
                         ST->turn(0);
                     }
                 }
             }else{
-                Serial.println("Automatic turn");
-                backAndForthFlag = scrollLightsFlag = alternateLightsFlag = turnAllOnFlag = false;
-                blinkLightsFlag = true;
+                lightEnum = 2;
                 ST->drive(0);
                 ST->turn(40);
             }
@@ -388,8 +373,8 @@ void echoCheckLeft(){
             previousValuesLeft[0] = ping_distance_left;
             leftAverage += ping_distance_left;
             leftAverage = leftAverage/NUM_PREV_VALUES;
-            Serial.print("Left: ");
-            Serial.println(leftAverage);
+//            Serial.print("Left: ");
+//            Serial.println(leftAverage);
 
             if(leftAverage < 3){
                 correctRight = true;
